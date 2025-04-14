@@ -8,13 +8,13 @@ import requests
 import shlex
 import time
 
-from api_keys import push_bullet_access_token, my_phone_number, my_device_id
+from api_keys import (
+    CURL_STRING,
+    PUSHOVER_APP_TOKEN,
+    PUSHOVER_USER_KEY,
+)
 
-IS_TEST = False
-
-CURL_STRING = """
-PASTE_CURL_STRING_HERE
-"""
+TESTING = True
 
 mock_response = {
     "responseTime": "April 13, 2025 17:04:34 PM EDT",
@@ -94,6 +94,7 @@ mock_response = {
     }
 }
 
+
 def parse_curl_string_to_dict(curl_string):
     lines = shlex.split(curl_string)
     lines = [" ".join(lines[i:i+2]) for i in range(0, len(lines), 2)]
@@ -129,10 +130,8 @@ def parse_curl_string_to_dict(curl_string):
     }
 
 
+# Returns a boolean of whether this qualifying option meets additional criteria.
 def is_high_quality_hit(opt, underlying_price, test=False):
-    if test:
-        return True
-
     # Parse values
     trade_price = float(opt['trade.price'])
     ask_price = float(opt['ask'])
@@ -162,48 +161,41 @@ def is_high_quality_hit(opt, underlying_price, test=False):
     )
 
 
+# Parses the dict for a hit into a short string message for notification.
 def format_msg_from_hit(hit):
-    return f"{hit['opt']}\nsh_pr: {hit['sh_pr']}\notm_perc: {hit['otm_perc']}\nexp: {hit['exp']}\nt_prm: {hit['t_prm']}"
+    return f"{hit['opt']}\nsh_pr: {hit['sh_pr']}\notm_perc: {hit['otm_perc']}\nexp: {hit['exp']}\nt_prm: {hit['t_prm']}\nhq_hit: {hit['hq_hit']}"
 
 
-def send_sms_notification(hit):
-    msg = format_msg_from_hit(hit)
+# Sends a push notification for a given message.
+def send_sms_notification(msg):
     print(f"Sending notification for: {msg}")
-    return
-    #
-    # url = "https://api.pushbullet.com/v2/texts"
-    # headers = {
-    #     "Access-Token": push_bullet_access_token,
-    #     "Content-Type": "application/json"
-    # }
-    # data = {
-    #     "data": {
-    #         "guid": str(uuid.uuid4()),
-    #         "addresses": [my_phone_number],
-    #         "message": msg,
-    #         "target_device_iden": my_device_id,
-    #         "status": "queued",
-    #     },
-    # }
-    # response = requests.post(url, headers=headers, data=json.dumps(data))
-    # if response.status_code == 200:
-    #     print(f"Notification sent for hit: {hit['opt']}")
-    # if response.status_code == 401:
-    #     print("Error: Invalid access token.")
-    # if response.status_code == 403:
-    #     print("Error: Invalid device ID.")
-    # if response.status_code == 429:
-    #     print("Error: Rate limit exceeded.")
-    # if response.status_code != 200:
-    #     print(f"Error: {response.status_code}")
-    #     print(response.text)
+    url = "https://api.pushover.net/1/messages.json"
+    data = {
+        "token": PUSHOVER_APP_TOKEN,
+        "user": PUSHOVER_USER_KEY,
+        "message": msg,
+        "priority": 1,
+    }
+    response = requests.post(url, data=data)
+    if response.status_code == 200:
+        print(f"Notification sent for hit: {msg}")
+    if response.status_code == 401:
+        print("Error: Invalid access token.")
+    if response.status_code == 403:
+        print("Error: Invalid device ID.")
+    if response.status_code == 429:
+        print("Error: Rate limit exceeded.")
+    if response.status_code != 200:
+        print(f"Error: {response.status_code}")
+        print(response.text)
 
 
 def send_notifications_for_hits(list_of_hits):
     print(f"Sending notifications for {len(list_of_hits)} hits...")
     print(list_of_hits)
     for hit in list_of_hits:
-        send_sms_notification(hit)
+        msg = format_msg_from_hit(hit)
+        send_sms_notification(msg)
         time.sleep(5)
 
 
@@ -215,22 +207,23 @@ def main():
     query_params = parsed_curl_dict.pop("query_params")
 
     while True:
-        response = requests.get(url, headers=headers, cookies=cookies, params=query_params)
+        if not TESTING:
+            response = requests.get(url, headers=headers, cookies=cookies, params=query_params)
 
-        if response.status_code == 401:
-            print(f"Error: {response.status_code}")
-            os.system('say "Re-authentication required."')
-            break
+            if response.status_code == 401:
+                print(f"Error: {response.status_code}")
+                os.system('say "Re-authentication required."')
+                break
 
-        if response.status_code != 200:
-            print(f"Error: {response.status_code}")
-            os.system(f'say "Error occurred. Got status code {response.status_code}"')
-            break
+            if response.status_code != 200:
+                print(f"Error: {response.status_code}")
+                os.system(f'say "Error occurred. Got status code {response.status_code}"')
+                break
 
-        cookies.update(response.cookies.get_dict())
+            cookies.update(response.cookies.get_dict())
 
         try:
-            data = mock_response if IS_TEST else response.json()
+            data = mock_response if TESTING else response.json()
         except json.JSONDecodeError:
             print("Invalid JSON response")
             break
@@ -247,23 +240,23 @@ def main():
             list_of_hits = data.get("ScreenData", {}).get("underliers", [])
 
             # Filter on high-quality hits only
-            high_quality_hits = []
+            parsed_hits = []
             for hit in list_of_hits:
                 underlying_price = float(hit.get("price"))
                 for option in hit.get("options", []):
-                    if is_high_quality_hit(option, underlying_price, test=IS_TEST):
-                        high_quality_hits.append({
-                            "opt": option["displaySymbol"],
-                            "sh_pr": hit.get("price"),
-                            "otm_perc": option.get("otm_percent", 0),
-                            "exp": option.get("exp"),
-                            "t_prm": option.get("total_premium", 0),
-                        })
+                    parsed_hits.append({
+                        "opt": option["displaySymbol"],
+                        "sh_pr": hit.get("price"),
+                        "otm_perc": option.get("otm_percent", 0),
+                        "exp": option.get("exp"),
+                        "t_prm": option.get("total_premium", 0),
+                        "hq_hit": is_high_quality_hit(option, underlying_price),
+                    })
 
-            send_notifications_for_hits(high_quality_hits)
+            send_notifications_for_hits(parsed_hits)
 
-            # Wait 5 minutes
-            time.sleep(300)
+        # Wait 5 minutes
+        time.sleep(300)
 
 
 if __name__ == "__main__":

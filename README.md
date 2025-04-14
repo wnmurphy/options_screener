@@ -5,9 +5,37 @@ A script that takes a cURL string that executes an options screener you define i
 ## Setup
 
 1. Have an existing ETRADE account.
-1. Create a custom options screener or use an existing one.
+1. Create a custom [Options Screener](https://us.etrade.com/e/t/optionanalytics/optionsscreener) in ETRADE or use an existing one.
+1. Create `api_keys.py` in the same directory as this script.
+1. Download [Pushover](https://pushover.net/) and create an account.
+1. Register your device with Pushover (one-time $5 charge for a license).
+1. Add your user key to `api_keys.py` as `PUSHOVER_USER_KEY`.
+1. Register a new application with Pushover, and add the API key to `api_keys.py` as `PUSHOVER_API_KEY`.
 1. Run `chmod +x options_screener.py` to make the script executable.
-1. Run `./options_screener.py` to start the script.
+1. Create a new virtual environment and install the required packages:
+   ```bash
+   virtualenv .
+   source bin/activate
+   pip install -r requirements.txt
+   ```
+
+## Usage
+
+1. Log in to ETRADE.
+2. Go to [options screeners](https://us.etrade.com/e/t/optionanalytics/optionsscreener).
+3. Open Dev Tools (CMD + i).
+4. Click Scan.
+5. Right-click the resulting call in the Network tab and select Copy > Copy as cURL (bash).
+6. Paste the cURL string into the `CURL_STRING` variable in `api_keys.py`.
+7. Run `./options_screener.py` to start the script.
+
+The script will run your options screener and refresh your local session cookie every 5 minutes.
+
+## Testing
+
+Set the `TESTING` variable in `api_keys.py` to `True` to run the script in testing mode.
+
+This will use a mock response to simulate the ETRADE API response and send push notifications.
 
 ## Example response structures
 
@@ -108,6 +136,7 @@ Screener returned no results:
 
 ## References
 
-* [ETRADE Developer Documentation](https://developer.etrade.com/documentation)
-* [Pushbullet API Documentation](https://docs.pushbullet.com/)
+* [ETRADE Options Screener](https://us.etrade.com/e/t/optionanalytics/optionsscreener)
+* [Pushover](https://pushover.net/)
+* [Pushover API documentation](https://pushover.net/api)
 * [Options Profit Calculator](https://www.optionsprofitcalculator.com/calculator/long-call.html)
