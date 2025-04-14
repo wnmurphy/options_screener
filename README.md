@@ -99,3 +99,6 @@ Screener returned no results:
 }
 ```
 
+## References
+
+* [ETRADE Developer Documentation](https://developer.etrade.com/documentation)

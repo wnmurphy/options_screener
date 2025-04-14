@@ -11,6 +11,84 @@ CURL_STRING = """
 PASTE_CURL_STRING_HERE
 """
 
+mock_response = {
+    "responseTime": "April 13, 2025 17:04:34 PM EDT",
+    "errorMessage": {
+        "errorCode": "",
+        "errorMessage": "",
+        "detailedErrorMessage": ""
+    },
+    "ScreenData": {
+        "screenid": 1,
+        "underliercount": 149,
+        "optionscount": 1000,
+        "symbollist": [
+            "CMPX",
+            "CHPT"
+        ],
+        "underlierSortColumn": "iv30",
+        "underlierSortDir": "DESC",
+        "optionSortColumn": "tvalx",
+        "optionSortDirection": "DESC",
+        "underlierLimitReached": "N",
+        "securityType": "EQ",
+        "underliers": [
+            {
+                "symbol": "CMPX",
+                "price": "1.695",
+                "vol": "574,697",
+                "avovol": "10,246.433",
+                "iv30": "216.194",
+                "underlying.trade.price": "1.695",
+                "underlying.trade.time": "1744401600180",
+                "options": [
+                    {
+                        "symbol": "CMPX--250417C00004000",
+                        "displaySymbol": "CMPX Apr 17 '25 $4 Call",
+                        "trade.price": "0.05",
+                        "trade.time": "1744378206672",
+                        "ovol": "120",
+                        "ooi": "18,046",
+                        "otype": "CALL",
+                        "ask": "0.05",
+                        "bid": "0",
+                        "strp": "4",
+                        "strm": "2.381",
+                        "tvalx": "100",
+                        "exp": "3"
+                    }
+                ]
+            },
+            {
+                "symbol": "CHPT",
+                "price": "0.60",
+                "vol": "8,264,233",
+                "avovol": "4,166.342",
+                "iv30": "199.651",
+                "underlying.trade.price": "0.6057",
+                "underlying.trade.time": "1744412400001",
+                "options": [
+                    {
+                        "symbol": "CHPT--250509C00001000",
+                        "displaySymbol": "CHPT May 09 '25 $1 Call",
+                        "trade.price": "0.01",
+                        "trade.time": "1744380198521",
+                        "ovol": "249",
+                        "ooi": "611",
+                        "otype": "CALL",
+                        "ask": "0.05",
+                        "bid": "0",
+                        "strp": "1",
+                        "strm": "1.664",
+                        "tvalx": "100",
+                        "exp": "25"
+                    }
+                ]
+            }
+        ]
+    }
+}
+
 def parse_curl_string_to_dict(curl_string):
     lines = shlex.split(curl_string)
     lines = [" ".join(lines[i:i+2]) for i in range(0, len(lines), 2)]
@@ -46,6 +124,44 @@ def parse_curl_string_to_dict(curl_string):
     }
 
 
+def is_high_quality_hit(opt, underlying_price, test=False):
+    if test:
+        return True
+
+    # Parse values
+    trade_price = float(opt['trade.price'])
+    ask_price = float(opt['ask'])
+    strike = float(opt['strp'])
+    volume = int(opt['ovol'].replace(',', ''))
+    open_interest = int(opt['ooi'].replace(',', ''))
+    dte = int(opt['exp'])
+    tvalx = float(opt['tvalx'])
+
+    # Derived metrics
+    oi_ratio = volume / open_interest if open_interest > 0 else 0
+    is_call = opt['otype'] == "CALL"
+    if is_call:
+        otm_percent = (strike - underlying_price) / underlying_price # calls
+    else:
+        otm_percent = (underlying_price - strike) / underlying_price # puts
+    opt['otm_percent'] = otm_percent
+    opt['total_premium'] = trade_price * volume * tvalx
+    ask_fill = trade_price >= 0.90 * ask_price  # near ask = aggressive buy
+
+    return (
+        oi_ratio >= 1.5 and
+        trade_price < 1.00 and
+        otm_percent <= 0.05 and
+        dte <= 8 and
+        ask_fill
+    )
+
+
+def send_notifications_for_hits(list_of_hits):
+    print(f"Sending notifications for {len(list_of_hits)} hits...")
+    print(list_of_hits)
+
+
 def main():
     parsed_curl_dict = parse_curl_string_to_dict(CURL_STRING)
     cookies = parsed_curl_dict.pop("cookies")
@@ -54,38 +170,56 @@ def main():
     query_params = parsed_curl_dict.pop("query_params")
 
     while True:
-        response = requests.get(url, headers=headers, cookies=cookies, params=query_params)
+        # response = requests.get(url, headers=headers, cookies=cookies, params=query_params)
+        #
+        # if response.status_code == 401:
+        #     print(f"Error: {response.status_code}")
+        #     os.system('say "Re-authentication required."')
+        #     break
+        #
+        # if response.status_code != 200:
+        #     print(f"Error: {response.status_code}")
+        #     os.system(f'say "Error occurred. Got status code {response.status_code}"')
+        #     break
+        #
+        # cookies.update(response.cookies.get_dict())
 
         try:
-            if response.status_code == 401:
-                print(f"Error: {response.status_code}")
-                os.system('say "Reauthentication required."')
-                break
+            # data = response.json()
+            data = mock_response  # For testing purposes, use mock response
+        except json.JSONDecodeError:
+            print("Invalid JSON response")
+            break
 
-            if response.status_code != 200:
-                print(f"Error: {response.status_code}")
-                os.system(f'say "Error occurred. Got status code {response.status_code}"')
-                break
+        print(f"Checking at: {data['responseTime']}")
 
-            cookies.update(response.cookies.get_dict())
+        if "ScreenData" not in data:
+            os.system('say "No hits found."')
 
-            data = response.json()
+        if "ScreenData" in data:
+            os.system('say "Hit. Unusual options trading activity found."')
+            print(data)
 
-            print(f"Checking at: {data['responseTime']}")
+            list_of_hits = data.get("ScreenData", {}).get("underliers", [])
 
-            if "ScreenData" not in data:
-                os.system('say "No hits found."')
+            # Filter on high-quality hits only
+            high_quality_hits = []
+            for hit in list_of_hits:
+                underlying_price = float(hit.get("price"))
+                for option in hit.get("options", []):
+                    if is_high_quality_hit(option, underlying_price, test=True):
+                        high_quality_hits.append({
+                            "opt": option["displaySymbol"],
+                            "sh_pr": hit.get("price"),
+                            "otm_perc": option.get("otm_percent", 0),
+                            "exp": option.get("exp"),
+                            "t_prm": option.get("total_premium", 0),
+                        })
 
-            if "ScreenData" in data:
-                os.system('say "Hit. Unusual options trading activity found."')
-                print(data)
+            send_notifications_for_hits(high_quality_hits)
 
             # Wait 5 minutes
             time.sleep(300)
-
-
-        except json.JSONDecodeError:
-            print("Invalid JSON response")
 
 
 if __name__ == "__main__":
