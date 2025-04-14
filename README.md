@@ -6,8 +6,8 @@ A script that takes a cURL string that executes an options screener you define i
 
 1. Have an existing ETRADE account.
 1. Create a custom options screener or use an existing one.
-1. Get an API key for Push Bullet.
-1. Create an `api_keys.py` file in the root, with a `pushbullet_api_key` variable containing your Push Bullet API key.
+1. Get an [API key]() for Push Bullet.
+1. Create an `api_keys.py` file in the root, with a `pushbullet_access_token` variable containing your Push Bullet API key.
 1. Run `chmod +x options_screener.py` to make the script executable.
 1. Run `./options_screener.py` to start the script.
 
@@ -111,3 +111,5 @@ Screener returned no results:
 ## References
 
 * [ETRADE Developer Documentation](https://developer.etrade.com/documentation)
+* [Pushbullet API Documentation](https://docs.pushbullet.com/)
+* [Options Profit Calculator](https://www.optionsprofitcalculator.com/calculator/long-call.html)
