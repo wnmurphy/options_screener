@@ -2,10 +2,15 @@
 
 import json
 import os
+import uuid
+
 import requests
 import shlex
 import time
 
+from api_keys import push_bullet_access_token, my_phone_number, my_device_id
+
+IS_TEST = False
 
 CURL_STRING = """
 PASTE_CURL_STRING_HERE
@@ -157,9 +162,49 @@ def is_high_quality_hit(opt, underlying_price, test=False):
     )
 
 
+def format_msg_from_hit(hit):
+    return f"{hit['opt']}\nsh_pr: {hit['sh_pr']}\notm_perc: {hit['otm_perc']}\nexp: {hit['exp']}\nt_prm: {hit['t_prm']}"
+
+
+def send_sms_notification(hit):
+    msg = format_msg_from_hit(hit)
+    print(f"Sending notification for: {msg}")
+    return
+    #
+    # url = "https://api.pushbullet.com/v2/texts"
+    # headers = {
+    #     "Access-Token": push_bullet_access_token,
+    #     "Content-Type": "application/json"
+    # }
+    # data = {
+    #     "data": {
+    #         "guid": str(uuid.uuid4()),
+    #         "addresses": [my_phone_number],
+    #         "message": msg,
+    #         "target_device_iden": my_device_id,
+    #         "status": "queued",
+    #     },
+    # }
+    # response = requests.post(url, headers=headers, data=json.dumps(data))
+    # if response.status_code == 200:
+    #     print(f"Notification sent for hit: {hit['opt']}")
+    # if response.status_code == 401:
+    #     print("Error: Invalid access token.")
+    # if response.status_code == 403:
+    #     print("Error: Invalid device ID.")
+    # if response.status_code == 429:
+    #     print("Error: Rate limit exceeded.")
+    # if response.status_code != 200:
+    #     print(f"Error: {response.status_code}")
+    #     print(response.text)
+
+
 def send_notifications_for_hits(list_of_hits):
     print(f"Sending notifications for {len(list_of_hits)} hits...")
     print(list_of_hits)
+    for hit in list_of_hits:
+        send_sms_notification(hit)
+        time.sleep(5)
 
 
 def main():
@@ -170,34 +215,33 @@ def main():
     query_params = parsed_curl_dict.pop("query_params")
 
     while True:
-        # response = requests.get(url, headers=headers, cookies=cookies, params=query_params)
-        #
-        # if response.status_code == 401:
-        #     print(f"Error: {response.status_code}")
-        #     os.system('say "Re-authentication required."')
-        #     break
-        #
-        # if response.status_code != 200:
-        #     print(f"Error: {response.status_code}")
-        #     os.system(f'say "Error occurred. Got status code {response.status_code}"')
-        #     break
-        #
-        # cookies.update(response.cookies.get_dict())
+        response = requests.get(url, headers=headers, cookies=cookies, params=query_params)
+
+        if response.status_code == 401:
+            print(f"Error: {response.status_code}")
+            os.system('say "Re-authentication required."')
+            break
+
+        if response.status_code != 200:
+            print(f"Error: {response.status_code}")
+            os.system(f'say "Error occurred. Got status code {response.status_code}"')
+            break
+
+        cookies.update(response.cookies.get_dict())
 
         try:
-            # data = response.json()
-            data = mock_response  # For testing purposes, use mock response
+            data = mock_response if IS_TEST else response.json()
         except json.JSONDecodeError:
             print("Invalid JSON response")
             break
 
-        print(f"Checking at: {data['responseTime']}")
+        print(f"Checking for hits at: {data['responseTime']}")
 
         if "ScreenData" not in data:
             os.system('say "No hits found."')
 
         if "ScreenData" in data:
-            os.system('say "Hit. Unusual options trading activity found."')
+            os.system('say "Unusual options trading activity found."')
             print(data)
 
             list_of_hits = data.get("ScreenData", {}).get("underliers", [])
@@ -207,7 +251,7 @@ def main():
             for hit in list_of_hits:
                 underlying_price = float(hit.get("price"))
                 for option in hit.get("options", []):
-                    if is_high_quality_hit(option, underlying_price, test=True):
+                    if is_high_quality_hit(option, underlying_price, test=IS_TEST):
                         high_quality_hits.append({
                             "opt": option["displaySymbol"],
                             "sh_pr": hit.get("price"),
