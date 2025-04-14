@@ -1,0 +1,101 @@
+# Options screener
+
+A script that takes a cURL string that executes an options screener you define in ETRADE, and then runs it every 5 minutes to fetch results.
+
+## Example response structures
+
+Screener returns results:
+
+```json
+{
+    "responseTime": "April 13, 2025 17:04:34 PM EDT",
+    "errorMessage": {
+        "errorCode": "",
+        "errorMessage": "",
+        "detailedErrorMessage": ""
+    },
+    "ScreenData": {
+        "screenid": 1,
+        "underliercount": 149,
+        "optionscount": 1000,
+        "symbollist": [
+            "CMPX",
+            "CHPT"
+        ],
+        "underlierSortColumn": "iv30",
+        "underlierSortDir": "DESC",
+        "optionSortColumn": "tvalx",
+        "optionSortDirection": "DESC",
+        "underlierLimitReached": "N",
+        "securityType": "EQ",
+        "underliers": [
+            {
+                "symbol": "CMPX",
+                "price": "1.695",
+                "vol": "574,697",
+                "avovol": "10,246.433",
+                "iv30": "216.194",
+                "underlying.trade.price": "1.695",
+                "underlying.trade.time": "1744401600180",
+                "options": [
+                    {
+                        "symbol": "CMPX--250417C00004000",
+                        "displaySymbol": "CMPX Apr 17 '25 $4 Call",
+                        "trade.price": "0.05",
+                        "trade.time": "1744378206672",
+                        "ovol": "120",
+                        "ooi": "18,046",
+                        "otype": "CALL",
+                        "ask": "0.05",
+                        "bid": "0",
+                        "strp": "4",
+                        "strm": "2.381",
+                        "tvalx": "100",
+                        "exp": "3"
+                    }
+                ]
+            },
+            {
+                "symbol": "CHPT",
+                "price": "0.60",
+                "vol": "8,264,233",
+                "avovol": "4,166.342",
+                "iv30": "199.651",
+                "underlying.trade.price": "0.6057",
+                "underlying.trade.time": "1744412400001",
+                "options": [
+                    {
+                        "symbol": "CHPT--250509C00001000",
+                        "displaySymbol": "CHPT May 09 '25 $1 Call",
+                        "trade.price": "0.01",
+                        "trade.time": "1744380198521",
+                        "ovol": "249",
+                        "ooi": "611",
+                        "otype": "CALL",
+                        "ask": "0.05",
+                        "bid": "0",
+                        "strp": "1",
+                        "strm": "1.664",
+                        "tvalx": "100",
+                        "exp": "25"
+                    }
+                ]
+            }
+        ]
+    }
+}
+```
+
+Screener returned no results:
+
+```json
+{
+    "responseTime": "April 13, 2025 00:54:12 AM EDT",
+    "errorMessage": {
+        "errorCode": "no_data_found",
+        "errorMessage": "No data found. Please try again.",
+        "detailedErrorMessage": "6916425938198937834"
+    }
+}
+```
+
