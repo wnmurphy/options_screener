@@ -2,6 +2,15 @@
 
 A script that takes a cURL string that executes an options screener you define in ETRADE, and then runs it every 5 minutes to fetch results.
 
+## Setup
+
+1. Have an existing ETRADE account.
+1. Create a custom options screener or use an existing one.
+1. Get an API key for Push Bullet.
+1. Create an `api_keys.py` file in the root, with a `pushbullet_api_key` variable containing your Push Bullet API key.
+1. Run `chmod +x options_screener.py` to make the script executable.
+1. Run `./options_screener.py` to start the script.
+
 ## Example response structures
 
 Screener returns results:
