@@ -1,5 +1,6 @@
 .idea
 api_keys.py
+scratch
 __pycache__/
 bin/
 lib/

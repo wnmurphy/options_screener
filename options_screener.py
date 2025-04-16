@@ -2,7 +2,7 @@
 
 import json
 import os
-import uuid
+import re
 
 import requests
 import shlex
@@ -14,7 +14,7 @@ from api_keys import (
     PUSHOVER_USER_KEY,
 )
 
-TESTING = True
+TESTING = False
 
 mock_response = {
     "responseTime": "April 13, 2025 17:04:34 PM EDT",
@@ -119,8 +119,10 @@ def parse_curl_string_to_dict(curl_string):
             cookie_string = line[3:].split(";")
             for cookie in cookie_string:
                 if "=" in cookie:
-                    key, value = cookie.split("=")
+                    key, value = cookie.split("=", 1)
                     cookies[key.strip()] = value.strip("'")
+
+    headers["action"] = "retrieveScreenPrefillData"
 
     return {
         "url": url,
@@ -129,31 +131,53 @@ def parse_curl_string_to_dict(curl_string):
         "query_params": query_params
     }
 
+def clean_int(val):
+    val = str(val).strip()
+    if not val or val in ['--', 'NaN']:
+        return 0
+    try:
+        return int(re.sub(r'[^\d]', '', val))  # removes commas and non-digits
+    except ValueError:
+        return 0
+
+def clean_float(val):
+    val = str(val).strip()
+    if not val or val in ['--', 'NaN']:
+        return 0.0
+    try:
+        return float(re.sub(r'[^\d.\-]', '', val))
+    except ValueError:
+        return 0.0
 
 # Returns a boolean of whether this qualifying option meets additional criteria.
-def is_high_quality_hit(opt, underlying_price, test=False):
+def is_high_quality_hit(opt, underlying_price):
     # Parse values
-    trade_price = float(opt['trade.price'])
-    ask_price = float(opt['ask'])
-    strike = float(opt['strp'])
-    volume = int(opt['ovol'].replace(',', ''))
-    open_interest = int(opt['ooi'].replace(',', ''))
-    dte = int(opt['exp'])
-    tvalx = float(opt['tvalx'])
+    trade_price = clean_float(opt['trade.price'])
+    ask_price = clean_float(opt['ask'])
+    strike = clean_float(opt['strp'])
+    volume = clean_int(opt['ovol'])
+    open_interest = clean_int(opt['ooi']) if 'ooi' in opt else 0
+    dte = clean_int(opt['exp'])
+
+    # Total price paid for the position.
+    opt['total_premium'] = trade_price * clean_int(opt['ovol']) * 100
+    # Format as currency
+    opt['total_premium'] = f"${opt['total_premium']:.2f}"
 
     # Derived metrics
     oi_ratio = volume / open_interest if open_interest > 0 else 0
-    is_call = opt['otype'] == "CALL"
-    if is_call:
+
+    # How "out of the money" is this option?
+    if opt['otype'] == "CALL":
         otm_percent = (strike - underlying_price) / underlying_price # calls
     else:
         otm_percent = (underlying_price - strike) / underlying_price # puts
-    opt['otm_percent'] = otm_percent
-    opt['total_premium'] = trade_price * volume * tvalx
+    opt['otm_percent'] = f"{otm_percent:.2%}"
+
     ask_fill = trade_price >= 0.90 * ask_price  # near ask = aggressive buy
 
     return (
-        oi_ratio >= 1.5 and
+        oi_ratio >= 1.5 if oi_ratio else True and
         trade_price < 1.00 and
         otm_percent <= 0.05 and
         dte <= 8 and
@@ -163,7 +187,7 @@ def is_high_quality_hit(opt, underlying_price, test=False):
 
 # Parses the dict for a hit into a short string message for notification.
 def format_msg_from_hit(hit):
-    return f"{hit['opt']}\nsh_pr: {hit['sh_pr']}\notm_perc: {hit['otm_perc']}\nexp: {hit['exp']}\nt_prm: {hit['t_prm']}\nhq_hit: {hit['hq_hit']}"
+    return f"{hit['opt']}\ncurrent_share_price: {hit['sh_pr']}\notm_percentage: {hit['otm_perc']}\ndays_to_exp: {hit['exp']}\ntrade_price: {hit['trade_price']}\ntotal_cost: {hit['t_prm']}\ntotal_size: {hit['ovol']}\nhq_hit: {hit['hq_hit']}"
 
 
 # Sends a push notification for a given message.
@@ -177,15 +201,15 @@ def send_sms_notification(msg):
         "priority": 1,
     }
     response = requests.post(url, data=data)
-    if response.status_code == 200:
-        print(f"Notification sent for hit: {msg}")
-    if response.status_code == 401:
-        print("Error: Invalid access token.")
-    if response.status_code == 403:
-        print("Error: Invalid device ID.")
-    if response.status_code == 429:
-        print("Error: Rate limit exceeded.")
-    if response.status_code != 200:
+    status_code_to_message = {
+        200: "Notification sent successfully.",
+        401: "Invalid access token.",
+        403: "Invalid device ID.",
+        429: "Rate limit exceeded.",
+    }
+    if response.status_code in status_code_to_message:
+        print(status_code_to_message[response.status_code])
+    else:
         print(f"Error: {response.status_code}")
         print(response.text)
 
@@ -239,18 +263,30 @@ def main():
 
             list_of_hits = data.get("ScreenData", {}).get("underliers", [])
 
-            # Filter on high-quality hits only
             parsed_hits = []
             for hit in list_of_hits:
-                underlying_price = float(hit.get("price"))
+                underlying_price = clean_float(hit.get("price"))
                 for option in hit.get("options", []):
+
+                    # Filter out options in the chain with no volume; irrelevant.
+                    if not clean_int(option["ovol"]):
+                        continue
+
+                    # Filter out anything that isn't "buying to open"; irrelevant.
+                    trade_price_higher_than_ask = clean_float(option["trade.price"]) >= clean_float(option["ask"])
+                    trade_volume_higher_than_oi = clean_int(option["ovol"]) > clean_int(option["ooi"])
+                    if not trade_price_higher_than_ask and not trade_volume_higher_than_oi:
+                        continue
+
                     parsed_hits.append({
                         "opt": option["displaySymbol"],
+                        "ovol": option["ovol"],
                         "sh_pr": hit.get("price"),
-                        "otm_perc": option.get("otm_percent", 0),
                         "exp": option.get("exp"),
-                        "t_prm": option.get("total_premium", 0),
                         "hq_hit": is_high_quality_hit(option, underlying_price),
+                        "t_prm": option.get("total_premium", 0),
+                        "trade_price": option.get("trade.price", 0),
+                        "otm_perc": option.get("otm_percent", 0),
                     })
 
             send_notifications_for_hits(parsed_hits)
