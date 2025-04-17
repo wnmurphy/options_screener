@@ -157,6 +157,8 @@ def send_sms_notification(msg):
 
 
 def send_notifications_for_hits(list_of_hits):
+    if not list_of_hits:
+        return
     print(f"Sending notifications for {len(list_of_hits)} hits...")
     print(list_of_hits)
     for hit in list_of_hits:
@@ -171,6 +173,8 @@ def main():
     headers = parsed_curl_dict.pop("headers")
     url = parsed_curl_dict.pop("url")
     query_params = parsed_curl_dict.pop("query_params")
+
+    options_already_seen_this_run = set()
 
     while True:
         if not TESTING:
@@ -234,6 +238,12 @@ def main():
                     trade_volume_higher_than_oi = option["ovol"] > option["ooi"]
                     if not trade_price_higher_than_ask and not trade_volume_higher_than_oi:
                         continue
+
+                    # Hash the option dict and add to set so we don't get notifications for the same qualifying option multiple times.
+                    option_hash = hash(f"{option['displaySymbol']}{option['trade.price']}{option['trade.time']}")
+                    if option_hash in options_already_seen_this_run:
+                        continue
+                    options_already_seen_this_run.add(option_hash)
 
                     parsed_hits.append({
                         "opt": option["displaySymbol"],
