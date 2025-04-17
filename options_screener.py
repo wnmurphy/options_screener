@@ -17,9 +17,10 @@ from api_keys import (
 from example_responses import example_response_1 as mock_response
 
 TESTING = False
-SPEAK = True
+SPEAK = False
 TOTAL_TRADE_SIZE_THRESHOLD = 1000 # $1000
 DAYS_TO_EXP_THRESHOLD = 60 # days
+RUN_SCREENER_EVERY_X_MINUTES = 30 # minutes
 
 
 def parse_curl_string_to_dict(curl_string):
@@ -105,7 +106,6 @@ def is_high_quality_hit(opt, underlying_price):
     strike = opt['strp']
     volume = opt['ovol']
     open_interest = opt['ooi']
-    days_to_expiration = opt['exp']
 
     # Derived metrics
     oi_ratio = volume / open_interest if open_interest > 0 else 0
@@ -179,6 +179,7 @@ def main():
             if response.status_code == 401:
                 print(f"Error: {response.status_code}")
                 say("Re-authentication required.")
+                send_sms_notification("Re-authentication required.")
                 break
 
             if response.status_code != 200:
@@ -247,8 +248,7 @@ def main():
 
             send_notifications_for_hits(parsed_hits)
 
-        # Wait 5 minutes
-        time.sleep(300)
+        time.sleep(RUN_SCREENER_EVERY_X_MINUTES * 60)
 
 
 if __name__ == "__main__":
