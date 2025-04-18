@@ -18,9 +18,10 @@ from example_responses import example_response_1 as mock_response
 
 TESTING = False
 SPEAK = False
-TOTAL_TRADE_SIZE_THRESHOLD = 1000 # $1000
-DAYS_TO_EXP_THRESHOLD = 60 # days
-RUN_SCREENER_EVERY_X_MINUTES = 30 # minutes
+MIN_TOTAL_TRADE_SIZE_FOR_DETECTION = 1000 # $
+MIN_TOTAL_TRADE_SIZE_FOR_HQ_FILTER = 1000
+MAX_DAYS_TO_EXP = 40 # days
+RUN_SCREENER_EVERY_X_MINUTES = 1 # minutes
 
 
 def parse_curl_string_to_dict(curl_string):
@@ -119,11 +120,14 @@ def is_high_quality_hit(opt, underlying_price):
 
     ask_fill = trade_price >= 0.90 * ask_price  # near ask = aggressive buy
 
+
+
     return (
         oi_ratio >= 1.5 if oi_ratio else True and
         trade_price < 1.00 and
         otm_percent <= 0.05 and
-        ask_fill
+        ask_fill and
+        opt['total_premium'] and opt['total_premium'] > MIN_TOTAL_TRADE_SIZE_FOR_HQ_FILTER
     )
 
 
@@ -226,11 +230,11 @@ def main():
                     option['total_premium'] = option['trade.price'] * option['ovol'] * 100
 
                     # Filter out smaller positions.
-                    if option['total_premium'] < TOTAL_TRADE_SIZE_THRESHOLD:
+                    if option['total_premium'] < MIN_TOTAL_TRADE_SIZE_FOR_DETECTION:
                         continue
 
                     # Filter out any options too far out.
-                    if option["exp"] > DAYS_TO_EXP_THRESHOLD:
+                    if option["exp"] > MAX_DAYS_TO_EXP:
                         continue
 
                     # Filter out any trade that isn't "buying to open" a position.
